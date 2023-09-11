@@ -14,49 +14,70 @@ scrape_data <- function(link) {
   questions <- page %>% html_nodes(xpath = "/html/body/main/div/div[3]/div/main/div[2]/table[1]/caption/div/span[1]") %>%
     html_text(trim = TRUE)
   
+  num_precincts <- page %>% html_nodes(xpath = "/html/body/main/div/div[3]/div/main/div[2]/table[1]/tbody/tr") %>%
+    length()
+  
   # Initialize data frame to store results
   results <- data.frame(Precinct = character(0), Question = character(0), Response = character(0), Number_Votes = numeric(0), Election_Date = character(0), stringsAsFactors = FALSE)
   
-  # Loop through questions
-  for (i in 1:length(questions)) {
-    # Construct XPath for "Yes" and "No" for the current question
-    yes_xpath <- paste0("/html/body/main/div/div[3]/div/main/div[2]/table[", 2*i-1, "]/tbody/tr[1]/td[3]")
-    no_xpath <- paste0("/html/body/main/div/div[3]/div/main/div[2]/table[", 2*i, "]/tbody/tr[2]/td[3]")
+  # Loop through questions tables
+  num_tables <- num_precincts
+  
+  for (table_index in 1:num_tables) {
+    # Construct XPath for the current question table
+    table_xpath <- paste0("/html/body/main/div/div[3]/div/main/div[2]/table[", table_index, "]")
+
     
-    # Check if "Yes" is present for the current question
+    # Extract questions for the current table
+    current_questions <- page %>% html_nodes(xpath = paste0(table_xpath, "/caption/div/span[1]")) %>%
+      html_text(trim = TRUE)
+    
+    # Construct XPath for "Yes" and "No" for the current table
+    yes_xpath <- paste0(table_xpath, "/tbody/tr[1]/td[3]")
+    no_xpath <- paste0(table_xpath, "/tbody/tr[2]/td[3]")
+    
+    # Check if "Yes" is present for the current table
     yes_nodes <- page %>% html_nodes(xpath = yes_xpath)
     
     if (length(yes_nodes) > 0) {
-      print(yes_nodes %>% html_text(trim = TRUE))
-      yes_present <- yes_nodes %>% html_text(trim = TRUE) == "Yes"
+      yes_present <- yes_nodes %>% html_text(trim = TRUE) == "YES"
     } else {
       yes_present <- FALSE
     }
     
-    # Check if "No" is present for the current question
+    # Check if "No" is present for the current table
     no_nodes <- page %>% html_nodes(xpath = no_xpath)
+    
+    # Extract precinct name
+    precinct_name <- page %>% html_node(xpath = "/html/body/main/div/div[3]/div/main/div[2]/div[2]/table/caption/text()") %>%
+      html_text(trim = TRUE)
     
     if (length(no_nodes) > 0) {
       print(no_nodes %>% html_text(trim = TRUE))
-      no_present <- no_nodes %>% html_text(trim = TRUE) == "No"
+      no_present <- no_nodes %>% html_text(trim = TRUE) == "NO"
     } else {
       no_present <- FALSE
     }
     
-    
-    # Add data to results data frame
     if (yes_present) {
-      results <- rbind(results, data.frame(Precinct = precinct_name, Question = question, Response = "Yes", Number_Votes = yes_votes, Election_Date = year, stringsAsFactors = FALSE))
+      yes_xpath_votes <- paste0(table_xpath, "/tbody/tr[1]/td[4]")
+      yes_votes_str <- page %>% html_nodes(xpath = yes_xpath_votes) %>%
+        html_text(trim = TRUE)
+      # Remove commas and convert to numeric
+      yes_votes <- as.numeric(gsub(",", "", yes_votes_str))
+      results <- rbind(results, data.frame(Precinct = precinct_name, Question = current_questions, Response = "Yes", Number_Votes = yes_votes, Election_Date = year, stringsAsFactors = FALSE))
     }
     
     if (no_present) {
-      results <- rbind(results, data.frame(Precinct = precinct_name, Question = question, Response = "No", Number_Votes = no_votes, Election_Date = year, stringsAsFactors = FALSE))
+      print("NO PRESENT")
+      no_xpath_votes <- paste0(table_xpath, "/tbody/tr[2]/td[4]")
+      no_votes_str <- page %>% html_nodes(xpath = no_xpath_votes) %>%
+        html_text(trim = TRUE)
+      # Remove commas and convert to numeric
+      no_votes <- as.numeric(gsub(",", "", no_votes_str))
+      results <- rbind(results, data.frame(Precinct = precinct_name, Question = current_questions, Response = "No", Number_Votes = no_votes, Election_Date = year, stringsAsFactors = FALSE))
     }
   }
-  
-  # Extract precinct name
-  precinct_name <- page %>% html_node(xpath = "/html/body/main/div/div[3]/div/main/div[2]/div[2]/table/caption/text()") %>%
-    html_text(trim = TRUE)
   
   return(results)
 }
@@ -79,7 +100,6 @@ precinct_links <- precinct_page %>%
 for (link in precinct_links) {
   # Create the complete URL for the precinct
   precinct_url <- paste0("https://electionresults.sos.state.mn.us/results/Index?ErsElectionId=142&CountyId=27&DistrictId=&Scenario=Precincts&selectprecincts=", link, "&show=Show+Selected+Precincts")
-  print(precinct_url)
   # Scrape data for the current precinct link
   data <- scrape_data(precinct_url)
   
